@@ -57,8 +57,10 @@ jobs:
         run: |
           mkdir -p daydream-binaries-$(uname -m)/{bin,lib,utils,doors,python,include}
           
-          # Install binaries to temporary directory
-          INSTALL_PATH=$(pwd)/daydream-binaries-$(uname -m) bash SRC/make.sh install
+          # Install binaries to temporary directory (muss aus SRC-Verzeichnis aufgerufen werden)
+          cd SRC
+          INSTALL_PATH=$(pwd)/../daydream-binaries-$(uname -m) bash make.sh install
+          cd ..
           
           # Copy shared libraries
           if [ -d SRC/lib ]; then
