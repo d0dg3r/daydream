@@ -33,13 +33,18 @@ jobs:
           # Python 2.7 über deadsnakes PPA installieren (für Ubuntu 22.04+)
           sudo add-apt-repository -y ppa:deadsnakes/ppa
           sudo apt-get update
-          sudo apt-get install -y python2.7 python2.7-dev python2-setuptools
+          sudo apt-get install -y python2.7 python2.7-dev
           
-          # Python 2.7 pip installieren falls benötigt
+          # Python 2.7 pip und setuptools installieren
           if ! command -v pip2 &> /dev/null; then
             curl https://bootstrap.pypa.io/pip/2.7/get-pip.py -o get-pip.py
             python2.7 get-pip.py || true
             rm get-pip.py || true
+          fi
+          
+          # setuptools über pip installieren falls pip verfügbar ist
+          if command -v pip2 &> /dev/null; then
+            pip2 install setuptools || true
           fi
 
       - name: Build binaries
@@ -52,8 +57,10 @@ jobs:
         run: |
           mkdir -p daydream-binaries-$(uname -m)/{bin,lib,utils,doors,python,include}
           
-          # Install binaries to temporary directory
-          INSTALL_PATH=$(pwd)/daydream-binaries-$(uname -m) bash SRC/make.sh install
+          # Install binaries to temporary directory (muss aus SRC-Verzeichnis aufgerufen werden)
+          cd SRC
+          INSTALL_PATH=$(pwd)/../daydream-binaries-$(uname -m) bash make.sh install
+          cd ..
           
           # Copy shared libraries
           if [ -d SRC/lib ]; then
