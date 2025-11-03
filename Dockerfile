@@ -45,7 +45,7 @@ RUN BINARY_TAR=$(ls daydream-binaries-*.tar.gz | head -1) && \
     cp -r "$BINARY_DIR"/python $INSTALL_PATH/ 2>/dev/null || true && \
     cp -r "$BINARY_DIR"/include $INSTALL_PATH/ 2>/dev/null || true && \
     if [ -d "$BINARY_DIR/INSTALL" ]; then \
-        cp -r "$BINARY_DIR"/INSTALL/* $INSTALL_PATH/ 2>/dev/null || true; \
+        cp -r "$BINARY_DIR"/INSTALL $INSTALL_PATH/ 2>/dev/null || true; \
     fi && \
     if [ -d "$BINARY_DIR/DOCS" ]; then \
         cp -r "$BINARY_DIR"/DOCS $INSTALL_PATH/docs 2>/dev/null || true; \
