@@ -64,9 +64,9 @@ RUN chown -R bbsadmin:bbs $INSTALL_PATH && \
     chown zipcheck $INSTALL_PATH/utils/runas 2>/dev/null || true && \
     chmod u+s $INSTALL_PATH/utils/runas 2>/dev/null || true
 
-# Installiere socat für TCP-Listener
+# Installiere socat und Python für TCP-Listener
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends socat && \
+    apt-get install -y --no-install-recommends socat python3 && \
     rm -rf /var/lib/apt/lists/*
 
 # Erstelle Entrypoint-Script
@@ -101,12 +101,42 @@ chmod 775 $INSTALL_PATH 2>/dev/null || true\n\
 chown zipcheck $INSTALL_PATH/utils/runas 2>/dev/null || true\n\
 chmod u+s $INSTALL_PATH/utils/runas 2>/dev/null || true\n\
 \n\
-# Starte TCP-Server mit socat (ddtelnetd erwartet stdin/stdout als Socket)\n\
+# Starte TCP-Server mit einfachem Python-Listener\n\
 echo "DayDream BBS startet auf Port 23..."\n\
 cd $INSTALL_PATH\n\
 if [ -f bin/ddtelnetd ]; then\n\
-    # Verwende socat als TCP-Listener, der ddtelnetd für jede Verbindung startet\n\
-    exec socat TCP-LISTEN:23,fork,reuseaddr EXEC:"bin/ddtelnetd -u bbs",pty,stderr\n\
+    # Python-Listener der ddtelnetd mit echtem Socket aufruft\n\
+    python3 << '\''PYEOF'\''\n\
+import socket\n\
+import os\n\
+import sys\n\
+\n\
+def handle_client(client_socket):\n\
+    try:\n\
+        # Dupliziere Socket auf stdin/stdout\n\
+        os.dup2(client_socket.fileno(), 0)\n\
+        os.dup2(client_socket.fileno(), 1)\n\
+        os.dup2(client_socket.fileno(), 2)\n\
+        client_socket.close()\n\
+        # Starte ddtelnetd\n\
+        os.chdir("/home/bbs")\n\
+        os.execl("/home/bbs/bin/ddtelnetd", "ddtelnetd", "-u", "bbs")\n\
+    except Exception as e:\n\
+        sys.exit(1)\n\
+\n\
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n\
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n\
+server.bind(("0.0.0.0", 23))\n\
+server.listen(5)\n\
+\n\
+while True:\n\
+    client, addr = server.accept()\n\
+    pid = os.fork()\n\
+    if pid == 0:\n\
+        handle_client(client)\n\
+    else:\n\
+        client.close()\n\
+PYEOF\n\
 else\n\
     echo "Error: ddtelnetd nicht gefunden!"\n\
     exit 1\n\
