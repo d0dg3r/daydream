@@ -103,6 +103,47 @@ jobs:
           # Store package name for later steps
           echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
 
+      - name: Create source package (scripts and docs)
+        run: |
+          ARCH=$(uname -m)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # Entferne refs/tags/ - unterstützt sowohl v2.20.0 als auch 2.20.0
+            VERSION=${GITHUB_REF#refs/tags/}
+            # Entferne optionales 'v' am Anfang
+            VERSION=${VERSION#v}
+          elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
+            BRANCH=${GITHUB_REF#refs/heads/}
+            VERSION=${BRANCH}-${GITHUB_SHA::8}
+          else
+            VERSION=${GITHUB_SHA::8}
+          fi
+          
+          # Erstelle Source-Package mit Install-Scripts, README, etc.
+          SOURCE_PACKAGE_NAME="daydream-source-${VERSION}"
+          
+          # Temporäres Verzeichnis für Source-Package
+          mkdir -p ${SOURCE_PACKAGE_NAME}
+          
+          # Kopiere wichtige Dateien
+          cp README.md ${SOURCE_PACKAGE_NAME}/ 2>/dev/null || true
+          cp install.sh ${SOURCE_PACKAGE_NAME}/ 2>/dev/null || true
+          cp install-debian-systemd.sh ${SOURCE_PACKAGE_NAME}/ 2>/dev/null || true
+          cp upgrade.sh ${SOURCE_PACKAGE_NAME}/ 2>/dev/null || true
+          
+          # Kopiere INSTALL-Verzeichnis (mit configs, scripts, etc.)
+          cp -r INSTALL ${SOURCE_PACKAGE_NAME}/ 2>/dev/null || true
+          
+          # Erstelle Archiv
+          tar -czf ${SOURCE_PACKAGE_NAME}.tar.gz ${SOURCE_PACKAGE_NAME}/
+          
+          # Checksums
+          sha256sum ${SOURCE_PACKAGE_NAME}.tar.gz > ${SOURCE_PACKAGE_NAME}.tar.gz.sha256
+          md5sum ${SOURCE_PACKAGE_NAME}.tar.gz > ${SOURCE_PACKAGE_NAME}.tar.gz.md5
+          
+          # Store für späteren Upload
+          echo "SOURCE_PACKAGE_NAME=${SOURCE_PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "Created source package: ${SOURCE_PACKAGE_NAME}.tar.gz"
+
       - name: Upload binaries as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -111,6 +152,9 @@ jobs:
             ${{ env.PACKAGE_NAME }}.tar.gz
             ${{ env.PACKAGE_NAME }}.tar.gz.sha256
             ${{ env.PACKAGE_NAME }}.tar.gz.md5
+            ${{ env.SOURCE_PACKAGE_NAME }}.tar.gz
+            ${{ env.SOURCE_PACKAGE_NAME }}.tar.gz.sha256
+            ${{ env.SOURCE_PACKAGE_NAME }}.tar.gz.md5
           retention-days: 90
 
       - name: Upload to release (if tag)
@@ -121,6 +165,9 @@ jobs:
             ${{ env.PACKAGE_NAME }}.tar.gz
             ${{ env.PACKAGE_NAME }}.tar.gz.sha256
             ${{ env.PACKAGE_NAME }}.tar.gz.md5
+            ${{ env.SOURCE_PACKAGE_NAME }}.tar.gz
+            ${{ env.SOURCE_PACKAGE_NAME }}.tar.gz.sha256
+            ${{ env.SOURCE_PACKAGE_NAME }}.tar.gz.md5
           draft: false
           prerelease: false
         env:
