@@ -53,25 +53,38 @@ jobs:
           # Versuche verschiedene Dateinamen
           PACKAGE_NAME="daydream-binaries-${ARCH}-${{ steps.get_release.outputs.version }}.tar.gz"
           
-          # Lade das Binary-Package vom Release herunter
-          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG} | grep "browser_download_url.*${PACKAGE_NAME}" | cut -d '"' -f 4)
+          # Lade Release-Informationen
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG})
+          
+          # Prüfe ob Release existiert
+          if echo "$RELEASE_JSON" | grep -q '"message":"Not Found"'; then
+            echo "Error: Release ${RELEASE_TAG} not found"
+            exit 1
+          fi
+          
+          # Suche nach dem Binary-Package (nur .tar.gz, keine .md5 oder .sha256)
+          # Extrahiere alle URLs und filtere nach daydream-binaries und .tar.gz
+          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep '"browser_download_url"' | grep 'daydream-binaries' | grep '\.tar\.gz"' | grep -v '\.md5\|\.sha256' | head -1 | sed -E 's/.*"browser_download_url":\s*"([^"]+)".*/\1/')
           
           if [ -z "$DOWNLOAD_URL" ]; then
             # Falls der exakte Name nicht gefunden wurde, suche nach dem ersten Binary-Package
             echo "Exact package name not found, searching for binary package..."
-            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG} | grep "browser_download_url.*daydream-binaries.*tar.gz" | head -1 | cut -d '"' -f 4)
+            DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep '"browser_download_url"' | grep 'daydream-binaries.*\.tar\.gz"' | grep -v '\.md5\|\.sha256' | head -1 | sed -E 's/.*"browser_download_url":\s*"([^"]+)".*/\1/')
           fi
           
           if [ -z "$DOWNLOAD_URL" ]; then
             echo "Error: Could not find binary package in release ${RELEASE_TAG}"
+            echo "Available assets:"
+            echo "$RELEASE_JSON" | grep "browser_download_url" | sed 's/.*"browser_download_url":\s*"\([^"]*\)".*/\1/' || true
             exit 1
           fi
           
           # Extrahiere den Dateinamen aus der URL
           FILENAME=$(basename "${DOWNLOAD_URL}" | cut -d '?' -f 1)
           
+          echo "Found package: ${FILENAME}"
           echo "Downloading: ${DOWNLOAD_URL}"
-          curl -L -o "${FILENAME}" "${DOWNLOAD_URL}"
+          curl -L -f -o "${FILENAME}" "${DOWNLOAD_URL}"
           
           # Verifiziere dass die Datei heruntergeladen wurde
           if [ ! -f "${FILENAME}" ] || [ ! -s "${FILENAME}" ]; then
