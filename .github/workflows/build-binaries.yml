@@ -77,7 +77,10 @@ jobs:
         run: |
           ARCH=$(uname -m)
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
+            # Entferne refs/tags/ - unterstützt sowohl v2.20.0 als auch 2.20.0
+            VERSION=${GITHUB_REF#refs/tags/}
+            # Entferne optionales 'v' am Anfang
+            VERSION=${VERSION#v}
           elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
             BRANCH=${GITHUB_REF#refs/heads/}
             VERSION=${BRANCH}-${GITHUB_SHA::8}
@@ -86,6 +89,7 @@ jobs:
           fi
           
           PACKAGE_NAME="daydream-binaries-${ARCH}-${VERSION}"
+          echo "Creating archive: ${PACKAGE_NAME}.tar.gz"
           tar -czf ${PACKAGE_NAME}.tar.gz daydream-binaries-${ARCH}/
           
           # Create checksums
