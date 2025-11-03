@@ -1,0 +1,11 @@
+.git
+.gitignore
+.github
+SRC
+*.md
+!README.md
+*.log
+*.tmp
+daydream-binaries-*.tar.gz
+daydream-source-*.tar.gz
+

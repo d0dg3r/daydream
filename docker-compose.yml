@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  daydream:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY_PACKAGE: daydream-binaries-x86_64-2.20.0.tar.gz
+    image: daydream-bbs:latest
+    container_name: daydream-bbs
+    ports:
+      - "23:23"   # Telnet
+      - "21:21"   # FTP (optional)
+    volumes:
+      - daydream-data:/home/bbs
+      - daydream-logs:/home/bbs/logfiles
+    environment:
+      - DAYDREAM=/home/bbs
+    restart: unless-stopped
+    networks:
+      - daydream-network
+
+volumes:
+  daydream-data:
+    driver: local
+  daydream-logs:
+    driver: local
+
+networks:
+  daydream-network:
+    driver: bridge
+

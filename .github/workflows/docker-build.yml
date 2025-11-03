@@ -1,0 +1,90 @@
+name: Build Docker Image
+
+on:
+  workflow_run:
+    workflows: ["Build DayDream BBS Binaries"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag'
+        required: false
+        type: string
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download binary package
+        uses: actions/download-artifact@v4
+        with:
+          name: daydream-binaries-x86_64
+          path: .
+          pattern: 'daydream-binaries-*.tar.gz'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version
+        id: extract_version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}
+          else
+            TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+            if [[ -n "$TAG" ]]; then
+              VERSION=${TAG#v}
+            else
+              VERSION=latest
+            fi
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Docker image version: ${VERSION}"
+
+      - name: Find binary package
+        id: find_package
+        run: |
+          PACKAGE=$(ls daydream-binaries-*.tar.gz | head -1)
+          if [ -z "$PACKAGE" ]; then
+            echo "Error: Binary package not found!"
+            exit 1
+          fi
+          echo "package=${PACKAGE}" >> $GITHUB_OUTPUT
+          echo "Using package: ${PACKAGE}"
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: |
+            daydream-bbs:${{ steps.extract_version.outputs.version }}
+            daydream-bbs:latest
+          build-args: |
+            BINARY_PACKAGE=${{ steps.find_package.outputs.package }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/daydream-bbs.tar
+
+      - name: Save Docker image
+        run: |
+          docker load -i /tmp/daydream-bbs.tar
+          docker save daydream-bbs:latest | gzip > daydream-bbs-docker-image.tar.gz
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daydream-docker-image
+          path: daydream-bbs-docker-image.tar.gz
+          retention-days: 30
+

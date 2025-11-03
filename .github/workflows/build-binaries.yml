@@ -73,6 +73,28 @@ jobs:
             find SRC/python -name "*.so" -exec cp {} daydream-binaries-$(uname -m)/python/ \;
             find SRC/python -name "*.py" -exec cp {} daydream-binaries-$(uname -m)/python/ \;
           fi
+          
+          # Füge Install-Scripts und Dokumentation zum Binary-Package hinzu
+          cp README.md daydream-binaries-$(uname -m)/ 2>/dev/null || true
+          cp install.sh daydream-binaries-$(uname -m)/ 2>/dev/null || true
+          cp install-debian-systemd.sh daydream-binaries-$(uname -m)/ 2>/dev/null || true
+          cp upgrade.sh daydream-binaries-$(uname -m)/ 2>/dev/null || true
+          
+          # Kopiere INSTALL-Verzeichnis (configs, scripts, data, etc.)
+          cp -r INSTALL daydream-binaries-$(uname -m)/ 2>/dev/null || true
+          
+          # Kopiere DOCS-Verzeichnis
+          cp -r DOCS daydream-binaries-$(uname -m)/ 2>/dev/null || true
+          
+          # Kopiere secure.sh falls vorhanden (wird für Permissions benötigt)
+          if [ -f "SRC/secure.sh" ]; then
+            cp SRC/secure.sh daydream-binaries-$(uname -m)/ 2>/dev/null || true
+          fi
+          
+          # Mache Install-Scripts ausführbar
+          chmod +x daydream-binaries-$(uname -m)/install.sh 2>/dev/null || true
+          chmod +x daydream-binaries-$(uname -m)/install-debian-systemd.sh 2>/dev/null || true
+          chmod +x daydream-binaries-$(uname -m)/upgrade.sh 2>/dev/null || true
 
       - name: Create archive
         run: |
@@ -173,10 +195,30 @@ jobs:
             ${{ env.SOURCE_PACKAGE_NAME }}.tar.gz.md5
           retention-days: 90
 
-      - name: Upload to release (if tag)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Check for tag
+        id: check_tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+            TAG=${TAG#v}
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "has_tag=true" >> $GITHUB_OUTPUT
+          else
+            TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+            if [[ -n "$TAG" ]]; then
+              TAG=${TAG#v}
+              echo "tag=${TAG}" >> $GITHUB_OUTPUT
+              echo "has_tag=true" >> $GITHUB_OUTPUT
+            else
+              echo "has_tag=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Upload to release (if tag exists)
+        if: steps.check_tag.outputs.has_tag == 'true'
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.check_tag.outputs.tag }}
           files: |
             ${{ env.PACKAGE_NAME }}.tar.gz
             ${{ env.PACKAGE_NAME }}.tar.gz.sha256
@@ -188,4 +230,101 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download binary package
+        uses: actions/download-artifact@v4
+        with:
+          name: daydream-binaries-x86_64
+          path: .
+          pattern: 'daydream-binaries-*.tar.gz'
+          merge-multiple: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub (optional)
+        if: secrets.DOCKER_HUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Extract version from tag
+        id: extract_version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}
+          else
+            TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+            if [[ -n "$TAG" ]]; then
+              VERSION=${TAG#v}
+            else
+              VERSION=latest
+            fi
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Docker image version: ${VERSION}"
+
+      - name: Find binary package
+        id: find_package
+        run: |
+          PACKAGE=$(ls daydream-binaries-*.tar.gz | head -1)
+          if [ -z "$PACKAGE" ]; then
+            echo "Error: Binary package not found!"
+            exit 1
+          fi
+          echo "package=${PACKAGE}" >> $GITHUB_OUTPUT
+          echo "Using package: ${PACKAGE}"
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: |
+            daydream-bbs:${{ steps.extract_version.outputs.version }}
+            daydream-bbs:latest
+          build-args: |
+            BINARY_PACKAGE=${{ steps.find_package.outputs.package }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/daydream-bbs.tar
+
+      - name: Upload Docker image as artifact
+        run: |
+          docker load -i /tmp/daydream-bbs.tar
+          docker save daydream-bbs:latest | gzip > daydream-bbs-docker-image.tar.gz
+          
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daydream-docker-image
+          path: daydream-bbs-docker-image.tar.gz
+          retention-days: 30
+
+      - name: Push to Docker Hub (if credentials provided)
+        if: secrets.DOCKER_HUB_USERNAME != ''
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/daydream-bbs:${{ steps.extract_version.outputs.version }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/daydream-bbs:latest
+          build-args: |
+            BINARY_PACKAGE=${{ steps.find_package.outputs.package }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 

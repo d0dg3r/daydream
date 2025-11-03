@@ -54,6 +54,7 @@ if [[ "$INSTALL_DEV_TOOLS" =~ ^[JjYy] ]]; then
 fi
 
 # Prüfen ob wir im DayDream Repository sind oder von GitHub klonen sollen
+# (nur wenn keine vorkompilierten Binaries gefunden werden)
 SOURCE_DIR=""
 if [ -d "SRC" ] && [ -f "SRC/make.sh" ]; then
     # Wir sind bereits im DayDream Repository
@@ -63,25 +64,8 @@ elif [ -d "/tmp/daydream" ] && [ -f "/tmp/daydream/SRC/make.sh" ]; then
     # Bereits geklont in /tmp
     SOURCE_DIR="/tmp/daydream"
     echo -e "${GREEN}DayDream Quellcode bereits geklont, verwende: $SOURCE_DIR${NC}"
-else
-    echo ""
-    echo "DayDream Quellcode nicht gefunden. Soll von GitHub geklont werden? (J/n)"
-    read CLONE_FROM_GITHUB
-    if [[ ! "$CLONE_FROM_GITHUB" =~ ^[Nn] ]]; then
-        echo -e "${YELLOW}Klone DayDream von GitHub...${NC}"
-        cd /tmp
-        if [ -d "daydream" ]; then
-            rm -rf daydream
-        fi
-        git clone https://github.com/ryanfantus/daydream.git
-        SOURCE_DIR="/tmp/daydream"
-        cd $SOURCE_DIR
-        echo -e "${GREEN}Klonen abgeschlossen${NC}"
-    else
-        echo "Bitte DayDream Quellcode manuell bereitstellen oder das Script im Repository-Verzeichnis ausführen."
-        exit 1
-    fi
 fi
+# Source-Directory wird später gesetzt, falls keine Binaries gefunden werden
 
 # Installationspfad abfragen
 echo ""
@@ -144,37 +128,139 @@ else
     INSTALL_DATA=1
 fi
 
-# Wechsel ins Source-Verzeichnis
-cd "$SOURCE_DIR"
-
-# Dokumentation kopieren
-echo -e "${YELLOW}Kopiere Dokumentation...${NC}"
-cd DOCS
-if [ ! -d $INSTALL_PATH/docs ]; then
-    mkdir -p $INSTALL_PATH/docs
+# Prüfe ob vorkompilierte Binaries vorhanden sind (z.B. aus Binary-Package)
+BINARY_DIR=""
+if [ -d "bin" ] && [ -f "bin/daydream" ]; then
+    # Wir sind im Binary-Package-Verzeichnis
+    BINARY_DIR=$(pwd)
+    echo -e "${GREEN}Vorkompilierte Binaries gefunden, verwende diese...${NC}"
+    USE_PREBUILT=1
+elif [ -d "daydream-binaries-"*"/bin" ]; then
+    # Binary-Package wurde entpackt
+    BINARY_DIR=$(find . -maxdepth 1 -type d -name "daydream-binaries-*" | head -1)
+    if [ -n "$BINARY_DIR" ] && [ -f "$BINARY_DIR/bin/daydream" ]; then
+        echo -e "${GREEN}Vorkompilierte Binaries gefunden in $BINARY_DIR, verwende diese...${NC}"
+        USE_PREBUILT=1
+    else
+        USE_PREBUILT=0
+    fi
+else
+    USE_PREBUILT=0
 fi
-cp -R * $INSTALL_PATH/docs
-cd ..
 
-# Daten-Dateien installieren (falls noch nicht gemacht)
-if [ $INSTALL_DATA -eq 1 ]; then
-    echo -e "${YELLOW}Installiere Daten-Dateien...${NC}"
-    cd INSTALL
-    bash install_me.sh $INSTALL_PATH
+if [ $USE_PREBUILT -eq 1 ]; then
+    # Verwende vorkompilierte Binaries
+    echo -e "${YELLOW}Installiere vorkompilierte Binaries...${NC}"
+    
+    # Kopiere Binaries
+    mkdir -p $INSTALL_PATH/{bin,lib,utils,doors,python,include}
+    cp -r $BINARY_DIR/bin/* $INSTALL_PATH/bin/ 2>/dev/null || true
+    cp -r $BINARY_DIR/lib/* $INSTALL_PATH/lib/ 2>/dev/null || true
+    cp -r $BINARY_DIR/utils/* $INSTALL_PATH/utils/ 2>/dev/null || true
+    cp -r $BINARY_DIR/doors/* $INSTALL_PATH/doors/ 2>/dev/null || true
+    cp -r $BINARY_DIR/python/* $INSTALL_PATH/python/ 2>/dev/null || true
+    cp -r $BINARY_DIR/include/* $INSTALL_PATH/include/ 2>/dev/null || true
+    
+    # Kopiere Dokumentation
+    if [ -d "$BINARY_DIR/DOCS" ]; then
+        echo -e "${YELLOW}Kopiere Dokumentation...${NC}"
+        if [ ! -d $INSTALL_PATH/docs ]; then
+            mkdir -p $INSTALL_PATH/docs
+        fi
+        cp -R $BINARY_DIR/DOCS/* $INSTALL_PATH/docs 2>/dev/null || true
+    fi
+    
+    # Daten-Dateien installieren (falls noch nicht gemacht)
+    if [ $INSTALL_DATA -eq 1 ]; then
+        if [ -d "$BINARY_DIR/INSTALL" ]; then
+            echo -e "${YELLOW}Installiere Daten-Dateien...${NC}"
+            cd $BINARY_DIR/INSTALL
+            bash install_me.sh $INSTALL_PATH
+            cd - > /dev/null
+        elif [ -n "$SOURCE_DIR" ] && [ -d "$SOURCE_DIR/INSTALL" ]; then
+            echo -e "${YELLOW}Installiere Daten-Dateien...${NC}"
+            cd "$SOURCE_DIR/INSTALL"
+            bash install_me.sh $INSTALL_PATH
+            cd - > /dev/null
+        else
+            echo -e "${YELLOW}Warnung: INSTALL-Verzeichnis nicht gefunden. Daten-Dateien werden nicht installiert.${NC}"
+        fi
+    fi
+else
+    # Normale Installation: Kompilieren
+    # Prüfe Source-Directory (falls noch nicht gesetzt)
+    if [ -z "$SOURCE_DIR" ]; then
+        echo ""
+        echo "DayDream Quellcode nicht gefunden. Soll von GitHub geklont werden? (J/n)"
+        read CLONE_FROM_GITHUB
+        if [[ ! "$CLONE_FROM_GITHUB" =~ ^[Nn] ]]; then
+            echo -e "${YELLOW}Klone DayDream von GitHub...${NC}"
+            cd /tmp
+            if [ -d "daydream" ]; then
+                rm -rf daydream
+            fi
+            git clone https://github.com/ryanfantus/daydream.git
+            SOURCE_DIR="/tmp/daydream"
+            cd $SOURCE_DIR
+            echo -e "${GREEN}Klonen abgeschlossen${NC}"
+        else
+            echo "Bitte DayDream Quellcode manuell bereitstellen oder das Script im Repository-Verzeichnis ausführen."
+            exit 1
+        fi
+    fi
+    
+    echo -e "${YELLOW}Kompiliere Quellcode...${NC}"
+    
+    # Wechsel ins Source-Verzeichnis
+    cd "$SOURCE_DIR"
+    
+    # Dokumentation kopieren
+    echo -e "${YELLOW}Kopiere Dokumentation...${NC}"
+    cd DOCS
+    if [ ! -d $INSTALL_PATH/docs ]; then
+        mkdir -p $INSTALL_PATH/docs
+    fi
+    cp -R * $INSTALL_PATH/docs
     cd ..
+    
+    # Daten-Dateien installieren (falls noch nicht gemacht)
+    if [ $INSTALL_DATA -eq 1 ]; then
+        echo -e "${YELLOW}Installiere Daten-Dateien...${NC}"
+        cd INSTALL
+        bash install_me.sh $INSTALL_PATH
+        cd ..
+    fi
+    
+    # Quellcode kompilieren
+    echo -e "${YELLOW}Kompiliere Quellcode...${NC}"
+    cd SRC
+    bash make.sh build
+    INSTALL_PATH=$INSTALL_PATH bash make.sh install
+    cd "$SOURCE_DIR"
 fi
 
-# Quellcode kompilieren
-echo -e "${YELLOW}Kompiliere Quellcode...${NC}"
-cd SRC
-bash make.sh build
-INSTALL_PATH=$INSTALL_PATH bash make.sh install
+# Konfiguration einrichten
 OLD_PWD=$(pwd)
 cd $INSTALL_PATH
 . scripts/ddenv.sh
 ddcfg configs/daydream.cfg
 cd $OLD_PWD
-bash secure.sh $INSTALL_PATH
+
+# Sicherheit
+if [ -f "$SOURCE_DIR/SRC/secure.sh" ]; then
+    bash "$SOURCE_DIR/SRC/secure.sh" $INSTALL_PATH
+elif [ -f "SRC/secure.sh" ]; then
+    bash SRC/secure.sh $INSTALL_PATH
+elif [ -f "$BINARY_DIR/secure.sh" ] && [ $USE_PREBUILT -eq 1 ]; then
+    bash "$BINARY_DIR/secure.sh" $INSTALL_PATH
+elif [ $USE_PREBUILT -eq 1 ]; then
+    # secure.sh nicht gefunden, aber wir können die Berechtigungen manuell setzen
+    echo -e "${YELLOW}Setze Berechtigungen...${NC}"
+    chown -R bbs:bbs $INSTALL_PATH 2>/dev/null || true
+    chmod 775 $INSTALL_PATH 2>/dev/null || true
+    chown zipcheck $INSTALL_PATH/utils/runas 2>/dev/null || true
+    chmod u+s $INSTALL_PATH/utils/runas 2>/dev/null || true
+fi
 
 # systemd-Services erstellen
 echo -e "${YELLOW}Erstelle systemd-Services...${NC}"
