@@ -9,6 +9,19 @@ docker pull daydream-bbs:latest
 docker run -d -p 23:23 --name daydream-bbs daydream-bbs:latest
 ```
 
+### Option 1b: Image aus GitHub Artifact laden
+
+1. Lade das `daydream-bbs-docker-image.tar.gz` Artifact vom GitHub Release herunter
+2. Image laden und starten:
+
+```bash
+# Image laden
+docker load < daydream-bbs-docker-image.tar.gz
+
+# Container starten
+docker run -d -p 23:23 --name daydream-bbs daydream-bbs:latest
+```
+
 ### Option 2: Lokaler Build
 
 1. Binary-Package herunterladen vom GitHub Release

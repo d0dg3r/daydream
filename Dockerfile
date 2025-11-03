@@ -50,6 +50,12 @@ RUN BINARY_TAR=$(ls daydream-binaries-*.tar.gz | head -1) && \
     if [ -d "$BINARY_DIR/DOCS" ]; then \
         cp -r "$BINARY_DIR"/DOCS $INSTALL_PATH/docs 2>/dev/null || true; \
     fi && \
+    # Erstelle configs-Verzeichnis falls nicht vorhanden \
+    mkdir -p $INSTALL_PATH/configs 2>/dev/null || true && \
+    # Kopiere Config-Datei falls vorhanden \
+    if [ -f "$BINARY_DIR/INSTALL/configs/daydream.cfg" ] && [ ! -f "$INSTALL_PATH/configs/daydream.cfg" ]; then \
+        cp "$BINARY_DIR/INSTALL/configs/daydream.cfg" "$INSTALL_PATH/configs/daydream.cfg" 2>/dev/null || true; \
+    fi && \
     rm -rf "$BINARY_DIR"
 
 # Setze Berechtigungen
@@ -66,9 +72,22 @@ set -e\n\
 if [ ! -f "$INSTALL_PATH/configs/daydream.cfg" ]; then\n\
     echo "Initialisiere DayDream BBS..."\n\
     cd $INSTALL_PATH\n\
-    . scripts/ddenv.sh 2>/dev/null || true\n\
+    if [ -f scripts/ddenv.sh ]; then\n\
+        . scripts/ddenv.sh 2>/dev/null || true\n\
+    fi\n\
     if [ -f utils/ddcfg ]; then\n\
-        utils/ddcfg configs/daydream.cfg 2>/dev/null || true\n\
+        mkdir -p configs data 2>/dev/null || true\n\
+        if [ ! -f configs/daydream.cfg ]; then\n\
+            if [ -f INSTALL/configs/daydream.cfg ]; then\n\
+                cp INSTALL/configs/daydream.cfg configs/daydream.cfg 2>/dev/null || true\n\
+            elif [ -f configs/daydream.cfg.example ]; then\n\
+                cp configs/daydream.cfg.example configs/daydream.cfg 2>/dev/null || true\n\
+            fi\n\
+        fi\n\
+        if [ -f configs/daydream.cfg ] && [ ! -f data/daydream.dat ]; then\n\
+            echo "Kompiliere Config-Datei..."\n\
+            utils/ddcfg configs/daydream.cfg 2>&1 || echo "Warnung: Config-Kompilierung fehlgeschlagen"\n\
+        fi\n\
     fi\n\
 fi\n\
 \n\
@@ -78,10 +97,16 @@ chmod 775 $INSTALL_PATH 2>/dev/null || true\n\
 chown zipcheck $INSTALL_PATH/utils/runas 2>/dev/null || true\n\
 chmod u+s $INSTALL_PATH/utils/runas 2>/dev/null || true\n\
 \n\
-# Starte Telnet-Server (einfacher TCP-Server statt systemd)\n\
+# Starte Telnet-Server\n\
 echo "DayDream BBS startet auf Port 23..."\n\
 cd $INSTALL_PATH\n\
-exec $INSTALL_PATH/bin/ddtelnetd -u bbs\n\
+if [ -f bin/ddtelnetd ]; then\n\
+    # Starte ddtelnetd im Foreground (für Container)\n\
+    exec bin/ddtelnetd -u bbs\n\
+else\n\
+    echo "Error: ddtelnetd nicht gefunden!"\n\
+    exit 1\n\
+fi\n\
 ' > /usr/local/bin/start-daydream.sh && \
     chmod +x /usr/local/bin/start-daydream.sh
 
