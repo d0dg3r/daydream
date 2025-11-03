@@ -18,12 +18,16 @@ libdd: $(LIBDD_OBJ)
 	strip libdd.so
 
 install: 
-	cp libdd.so libddcommon.so /usr/lib
-	ln -s -f /usr/lib/libdd.so /usr/lib/libdd.so.0
-	ln -s -f /usr/lib/libddcommon.so /usr/lib/libddcommon.so.0
-	cp libdd.so libddcommon.so $(INSTALL_PATH)/lib
-	ln -s -f $(INSTALL_PATH)/lib/libdd.so $(INSTALL_PATH)/lib/libdd.so.0
-	ln -s -f $(INSTALL_PATH)/lib/libddcommon.so $(INSTALL_PATH)/lib/libddcommon.so.0
+	@if [ -n "$(INSTALL_PATH)" ]; then \
+		mkdir -p $(INSTALL_PATH)/lib; \
+		cp libdd.so libddcommon.so $(INSTALL_PATH)/lib; \
+		ln -s -f $(INSTALL_PATH)/lib/libdd.so $(INSTALL_PATH)/lib/libdd.so.0; \
+		ln -s -f $(INSTALL_PATH)/lib/libddcommon.so $(INSTALL_PATH)/lib/libddcommon.so.0; \
+	else \
+		cp libdd.so libddcommon.so /usr/lib 2>/dev/null || echo "Warning: Could not copy to /usr/lib (run as root for system-wide install)"; \
+		ln -s -f /usr/lib/libdd.so /usr/lib/libdd.so.0 2>/dev/null || true; \
+		ln -s -f /usr/lib/libddcommon.so /usr/lib/libddcommon.so.0 2>/dev/null || true; \
+	fi
 
 clean: 
 	rm -f *.o libddcommon.so libdd.so libdd.a libddcommon.a
