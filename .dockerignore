@@ -6,6 +6,7 @@ SRC
 !README.md
 *.log
 *.tmp
-daydream-binaries-*.tar.gz
+# Binary-Packages werden für Docker Builds aus Releases benötigt
+# daydream-binaries-*.tar.gz
 daydream-source-*.tar.gz
 

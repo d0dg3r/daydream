@@ -94,6 +94,10 @@ jobs:
           
           echo "package_file=${FILENAME}" >> $GITHUB_OUTPUT
           echo "Downloaded package: $(ls -lh ${FILENAME} | awk '{print $5}')"
+          
+          # Stelle sicher, dass die Datei im Build-Kontext verfügbar ist
+          # (sie ist bereits im Workspace, aber Docker braucht sie im Build-Kontext)
+          echo "Package is ready for Docker build"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
