@@ -77,16 +77,27 @@ jobs:
       - name: Create archive
         run: |
           ARCH=$(uname -m)
+          # Prüfe zuerst ob es ein Tag ist (hat Vorrang)
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             # Entferne refs/tags/ - unterstützt sowohl v2.20.0 als auch 2.20.0
             VERSION=${GITHUB_REF#refs/tags/}
             # Entferne optionales 'v' am Anfang
             VERSION=${VERSION#v}
+            echo "Using tag version: ${VERSION}"
           elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
-            BRANCH=${GITHUB_REF#refs/heads/}
-            VERSION=${BRANCH}-${GITHUB_SHA::8}
+            # Prüfe ob es einen Tag auf diesem Commit gibt
+            TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+            if [[ -n "$TAG" ]]; then
+              VERSION=${TAG#v}
+              echo "Found tag on commit: ${VERSION}"
+            else
+              BRANCH=${GITHUB_REF#refs/heads/}
+              VERSION=${BRANCH}-${GITHUB_SHA::8}
+              echo "Using branch version: ${VERSION}"
+            fi
           else
             VERSION=${GITHUB_SHA::8}
+            echo "Using commit version: ${VERSION}"
           fi
           
           PACKAGE_NAME="daydream-binaries-${ARCH}-${VERSION}"
@@ -107,14 +118,18 @@ jobs:
       - name: Create source package (scripts and docs)
         run: |
           ARCH=$(uname -m)
+          # Verwende die gleiche VERSION wie beim Binary-Archiv
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            # Entferne refs/tags/ - unterstützt sowohl v2.20.0 als auch 2.20.0
             VERSION=${GITHUB_REF#refs/tags/}
-            # Entferne optionales 'v' am Anfang
             VERSION=${VERSION#v}
           elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
-            BRANCH=${GITHUB_REF#refs/heads/}
-            VERSION=${BRANCH}-${GITHUB_SHA::8}
+            TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+            if [[ -n "$TAG" ]]; then
+              VERSION=${TAG#v}
+            else
+              BRANCH=${GITHUB_REF#refs/heads/}
+              VERSION=${BRANCH}-${GITHUB_SHA::8}
+            fi
           else
             VERSION=${GITHUB_SHA::8}
           fi
