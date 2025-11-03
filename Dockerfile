@@ -64,31 +64,35 @@ RUN chown -R bbsadmin:bbs $INSTALL_PATH && \
     chown zipcheck $INSTALL_PATH/utils/runas 2>/dev/null || true && \
     chmod u+s $INSTALL_PATH/utils/runas 2>/dev/null || true
 
+# Installiere socat für TCP-Listener
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends socat && \
+    rm -rf /var/lib/apt/lists/*
+
 # Erstelle Entrypoint-Script
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
 # Initialisiere BBS falls noch nicht geschehen\n\
-if [ ! -f "$INSTALL_PATH/configs/daydream.cfg" ]; then\n\
+cd $INSTALL_PATH\n\
+if [ -f scripts/ddenv.sh ]; then\n\
+    . scripts/ddenv.sh 2>/dev/null || true\n\
+fi\n\
+\n\
+if [ ! -f configs/daydream.cfg ]; then\n\
     echo "Initialisiere DayDream BBS..."\n\
-    cd $INSTALL_PATH\n\
-    if [ -f scripts/ddenv.sh ]; then\n\
-        . scripts/ddenv.sh 2>/dev/null || true\n\
+    mkdir -p configs data 2>/dev/null || true\n\
+    if [ -f INSTALL/configs/daydream.cfg ]; then\n\
+        cp INSTALL/configs/daydream.cfg configs/daydream.cfg 2>/dev/null || true\n\
+    elif [ -f configs/daydream.cfg.example ]; then\n\
+        cp configs/daydream.cfg.example configs/daydream.cfg 2>/dev/null || true\n\
     fi\n\
-    if [ -f utils/ddcfg ]; then\n\
-        mkdir -p configs data 2>/dev/null || true\n\
-        if [ ! -f configs/daydream.cfg ]; then\n\
-            if [ -f INSTALL/configs/daydream.cfg ]; then\n\
-                cp INSTALL/configs/daydream.cfg configs/daydream.cfg 2>/dev/null || true\n\
-            elif [ -f configs/daydream.cfg.example ]; then\n\
-                cp configs/daydream.cfg.example configs/daydream.cfg 2>/dev/null || true\n\
-            fi\n\
-        fi\n\
-        if [ -f configs/daydream.cfg ] && [ ! -f data/daydream.dat ]; then\n\
-            echo "Kompiliere Config-Datei..."\n\
-            utils/ddcfg configs/daydream.cfg 2>&1 || echo "Warnung: Config-Kompilierung fehlgeschlagen"\n\
-        fi\n\
-    fi\n\
+fi\n\
+\n\
+if [ -f utils/ddcfg ] && [ -f configs/daydream.cfg ] && [ ! -f data/daydream.dat ]; then\n\
+    echo "Kompiliere Config-Datei..."\n\
+    mkdir -p data 2>/dev/null || true\n\
+    utils/ddcfg configs/daydream.cfg 2>&1 || echo "Warnung: Config-Kompilierung fehlgeschlagen"\n\
 fi\n\
 \n\
 # Setze Berechtigungen\n\
@@ -97,12 +101,12 @@ chmod 775 $INSTALL_PATH 2>/dev/null || true\n\
 chown zipcheck $INSTALL_PATH/utils/runas 2>/dev/null || true\n\
 chmod u+s $INSTALL_PATH/utils/runas 2>/dev/null || true\n\
 \n\
-# Starte Telnet-Server\n\
+# Starte TCP-Server mit socat (ddtelnetd erwartet stdin/stdout als Socket)\n\
 echo "DayDream BBS startet auf Port 23..."\n\
 cd $INSTALL_PATH\n\
 if [ -f bin/ddtelnetd ]; then\n\
-    # Starte ddtelnetd im Foreground (für Container)\n\
-    exec bin/ddtelnetd -u bbs\n\
+    # Verwende socat als TCP-Listener, der ddtelnetd für jede Verbindung startet\n\
+    exec socat TCP-LISTEN:23,fork,reuseaddr EXEC:"bin/ddtelnetd -u bbs",pty,stderr\n\
 else\n\
     echo "Error: ddtelnetd nicht gefunden!"\n\
     exit 1\n\
