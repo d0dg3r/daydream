@@ -24,12 +24,26 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get -y upgrade
 
+# Basis-Pakete installieren
 apt-get install -y build-essential \
-    python-setuptools python-dev python2.7-dev python-software-properties \
     libpq-dev \
-    libtiff4-dev libjpeg8-dev zlib1g-dev libfreetype6-dev liblcms2-dev \
-    libwebp-dev tcl8.5-dev tk8.5-dev \
+    zlib1g-dev libfreetype6-dev liblcms2-dev \
+    libwebp-dev \
     git curl
+
+# Python 2.7 (optional - nur falls verfügbar)
+if apt-cache show python2.7-dev > /dev/null 2>&1; then
+    apt-get install -y python2.7 python2.7-dev python-setuptools || true
+elif apt-cache show python2-dev > /dev/null 2>&1; then
+    apt-get install -y python2 python2-dev python-setuptools || true
+else
+    echo -e "${YELLOW}Warnung: Python 2.7 ist nicht verfügbar. Python-Support wird übersprungen.${NC}"
+fi
+
+# Pakete mit neuen Namen (für neuere Debian/Ubuntu Versionen)
+apt-get install -y libtiff-dev libjpeg-dev tcl-dev tk-dev 2>/dev/null || \
+apt-get install -y libtiff5-dev libjpeg62-turbo-dev tcl8.6-dev tk8.6-dev 2>/dev/null || \
+echo -e "${YELLOW}Warnung: Einige Entwicklungspakete konnten nicht installiert werden${NC}"
 
 # Optional: CVS, SVN, Mercurial für Entwicklung
 echo ""
